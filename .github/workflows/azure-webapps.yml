@@ -20,8 +20,8 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v2
+      - name: Login to Azure
+        uses: azure/login@v1
         with:
-          app-name: TelcomChurnPrediction  # Replace with your app name
-          slot-name: production  # Optional if you're using slots
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+        
