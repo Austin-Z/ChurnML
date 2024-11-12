@@ -4,22 +4,13 @@ on:
   push:
     branches:
       - main
-  pull_request:
-    branches:
-      - main
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout the repository
+      - name: Checkout code
         uses: actions/checkout@v2
-
-      - name: Log in to Azure
-        uses: azure/login@v1
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Set up Python
         uses: actions/setup-python@v2
@@ -31,12 +22,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Zip application files for deployment
-        run: zip -r app.zip .
+      - name: Log in to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: TelcomChurnPrediction  # Replace with your Azure Web App name
-          package: ./app.zip
-
+          app-name: TelcomChurnPrediction
+          slot-name: "production"
+          package: "."
