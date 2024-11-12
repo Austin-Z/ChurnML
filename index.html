@@ -20,6 +20,8 @@
             padding: 20px;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            margin: auto;
         }
         label {
             display: block;
@@ -38,7 +40,7 @@
             padding: 10px 15px;
             border-radius: 4px;
             cursor: pointer;
-            margin-right: 10px; /* Add space between buttons */
+            margin-right: 10px;
         }
         button:hover {
             background-color: #0056b3;
@@ -49,9 +51,36 @@
             background: #e9ecef;
             border-radius: 4px;
         }
-        /* Popup styles */
+        /* Modal styles */
         .modal {
             display: none;
+            position: fixed;
+            z-index: 1;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 15% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            border-radius: 8px;
+            width: 80%;
+            max-width: 400px;
+        }
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #000;
         }
     </style>
 </head>
@@ -59,49 +88,14 @@
     <h2>Enter Features for Prediction</h2>
     <form id="prediction-form">
         <label for="feature1">Feature 1:</label>
-        <input type="number" id="feature1" name="feature1"><br><br>
+        <input type="number" id="feature1" name="feature1" required>
+
         <label for="feature2">Feature 2:</label>
-        <input type="number" id="feature2" name="feature2"><br><br>
+        <input type="number" id="feature2" name="feature2" required>
+
         <label for="feature3">Feature 3:</label>
-        <input type="number" id="feature3" name="feature3"><br><br>
-        <button type="button" onclick="getPrediction()">Predict</button>
-    </form>
+        <input type="number" id="feature3" name="feature3" required>
 
-    <h3>Prediction Result:</h3>
-    <p id="result"></p>
-
-    <script>
-        async function getPrediction() {
-            const feature1 = parseFloat(document.getElementById("feature1").value);
-            const feature2 = parseFloat(document.getElementById("feature2").value);
-            const feature3 = parseFloat(document.getElementById("feature3").value);
-
-            const response = await fetch("http://127.0.0.1:8000/predict", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({ feature1, feature2, feature3 })
-            });
-
-            const result = await response.json();
-            document.getElementById("result").textContent = "Prediction: " + result.prediction;
-        }
-    </script>
-</body>
-</html>
-
-    </style>
-</head>
-<body>
-    <h2>Enter Features for Prediction</h2>
-    <form id="prediction-form">
-        <label for="feature1">Feature 1:</label>
-        <input type="number" id="feature1" name="feature1"><br><br>
-        <label for="feature2">Feature 2:</label>
-        <input type="number" id="feature2" name="feature2"><br><br>
-        <label for="feature3">Feature 3:</label>
-        <input type="number" id="feature3" name="feature3"><br><br>
         <button type="button" onclick="getPrediction()">Predict</button>
         <button type="button" onclick="openBatchOrder()">Batch Order</button>
     </form>
@@ -109,7 +103,7 @@
     <h3>Prediction Result:</h3>
     <p id="result"></p>
 
-    <!-- The Modal -->
+    <!-- Modal for Batch Order Confirmation -->
     <div id="batchOrderModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal()">&times;</span>
@@ -128,8 +122,8 @@
             // Validate inputs
             if (isNaN(feature1) || isNaN(feature2) || isNaN(feature3)) {
                 alert("Invalid input. Please enter valid numbers for all features.");
-                return; // Exit the function if inputs are invalid
-            } 
+                return;
+            }
 
             const response = await fetch("http://127.0.0.1:8000/predict", {
                 method: "POST",
@@ -139,8 +133,12 @@
                 body: JSON.stringify({ feature1, feature2, feature3 })
             });
 
-            const result = await response.json();
-            document.getElementById("result").textContent = "Prediction: " + result.prediction;
+            if (response.ok) {
+                const result = await response.json();
+                document.getElementById("result").textContent = "Prediction: " + result.prediction;
+            } else {
+                document.getElementById("result").textContent = "Error: Could not get prediction.";
+            }
         }
 
         function openBatchOrder() {
@@ -153,7 +151,7 @@
 
         function confirmBatchOrder() {
             closeModal();
-            alert("Just kidding, we are not offering batch order at this moment");
+            alert("Just kidding, we are not offering batch order at this moment.");
         }
 
         // Close the modal when clicking outside of it
