@@ -30,6 +30,6 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: TelcomChurnPrediction
+          app-name: "TelcomChurnPrediction"
           slot-name: "production"
           package: "."
