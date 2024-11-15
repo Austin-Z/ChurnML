@@ -7,6 +7,9 @@ import requests
 import os
 from typing import List, Dict
 import logging
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +28,18 @@ app.add_middleware(
 
 # Global variable for model
 model = None
+
+# Define the columns expected by the model based on training
+numeric_features = ['MonthlyCharges', 'tenure']  # Example numeric columns
+categorical_features = ['Contract', 'PaymentMethod', 'InternetService']  # Example categorical columns
+
+# Preprocessing pipeline similar to training notebook
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', StandardScaler(), numeric_features),
+        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
+    ]
+)
 
 @app.on_event("startup")
 async def load_model():
@@ -66,15 +81,15 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
         # Read the uploaded CSV file into a pandas DataFrame
         df = pd.read_csv(file.file)
         
-        # Column renaming
+        # Column renaming to match expected features if necessary
         column_mapping = {
             'CustomerID': 'user_id',
             'CLTV_value': 'CLTV'
         }
         df = df.rename(columns=column_mapping)
         
-        # Validate required columns
-        required_columns = ['user_id', 'CLTV', 'Reason']
+        # Check for required columns
+        required_columns = ['user_id', 'CLTV', 'Reason'] + numeric_features + categorical_features
         missing_columns = [col for col in required_columns if col not in df.columns]
         if missing_columns:
             raise HTTPException(
@@ -82,29 +97,31 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
                 detail=f"Missing required columns: {', '.join(missing_columns)}"
             )
         
-        # Extract necessary columns
+        # Separate user data (not used in model input) from features
         user_ids = df['user_id']
         cltv_values = df['CLTV']
         reasons = df['Reason']
         
-        # Preprocess for model input and make predictions
-        model_features = model.feature_names_in_
-        df_features = df.reindex(columns=model_features, fill_value=0)
+        # Select features and preprocess them to match the training phase
+        df_features = df[numeric_features + categorical_features]
+        df_features = preprocessor.fit_transform(df_features)
         
-        # Validate feature columns
-        if not all(col in df.columns for col in model_features):
+        # Validate if the transformed data matches the model's expected features
+        model_features = model.feature_names_in_
+        if df_features.shape[1] != len(model_features):
             raise HTTPException(
                 status_code=400,
-                detail="Input data missing required feature columns"
+                detail="Input data does not match the model's expected feature count"
             )
         
+        # Predict churn probabilities
         churn_probabilities = model.predict_proba(df_features)[:, 1]
         
         # Prepare sorted results
         results = sorted(
             [
                 {
-                    "user_id": str(uid),  # Convert to string to ensure JSON serializable
+                    "user_id": str(uid),
                     "cltv": float(cltv),
                     "reason": str(reason),
                     "churn_probability": float(prob)
