@@ -29,18 +29,6 @@ app.add_middleware(
 # Global variable for model
 model = None
 
-# Define the columns expected by the model based on training
-numeric_features = ['MonthlyCharges', 'tenure']  # Example numeric columns
-categorical_features = ['Contract', 'PaymentMethod', 'InternetService']  # Example categorical columns
-
-# Preprocessing pipeline similar to training notebook
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', StandardScaler(), numeric_features),
-        ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_features)
-    ]
-)
-
 @app.on_event("startup")
 async def load_model():
     """Load model on startup instead of module level"""
@@ -81,38 +69,26 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
         # Read the uploaded CSV file into a pandas DataFrame
         df = pd.read_csv(file.file)
         
-        # Column renaming to match expected features if necessary
-        column_mapping = {
-            'CustomerID': 'user_id',
-            'CLTV_value': 'CLTV'
-        }
-        df = df.rename(columns=column_mapping)
+        # Feature Engineering: Create ChargesPerMonth
+        df['ChargesPerMonth'] = df['Total Charges'] / df['Tenure Months']
         
-        # Check for required columns
-        required_columns = ['user_id', 'CLTV', 'Reason'] + numeric_features + categorical_features
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Missing required columns: {', '.join(missing_columns)}"
-            )
+        # Drop unnecessary columns
+        df = df.drop(['Total Charges', 'Monthly Charges'], axis=1)
         
-        # Separate user data (not used in model input) from features
-        user_ids = df['user_id']
-        cltv_values = df['CLTV']
-        reasons = df['Reason']
+        # One-Hot Encoding for all categorical columns, dropping the first category
+        df = pd.get_dummies(df, drop_first=True)
         
-        # Select features and preprocess them to match the training phase
-        df_features = df[numeric_features + categorical_features]
-        df_features = preprocessor.fit_transform(df_features)
-        
-        # Validate if the transformed data matches the model's expected features
+        # Extract features for prediction
         model_features = model.feature_names_in_
-        if df_features.shape[1] != len(model_features):
+        missing_features = [col for col in model_features if col not in df.columns]
+        if missing_features:
             raise HTTPException(
                 status_code=400,
-                detail="Input data does not match the model's expected feature count"
+                detail=f"Input data is missing required feature columns: {', '.join(missing_features)}"
             )
+        
+        # Align DataFrame with the model’s expected features
+        df_features = df.reindex(columns=model_features, fill_value=0)
         
         # Predict churn probabilities
         churn_probabilities = model.predict_proba(df_features)[:, 1]
@@ -123,10 +99,13 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
                 {
                     "user_id": str(uid),
                     "cltv": float(cltv),
-                    "reason": str(reason),
+                    "tenure": int(tenure),
+                    "ChargesPerMonth": float(charges_per_month),
                     "churn_probability": float(prob)
                 }
-                for uid, cltv, reason, prob in zip(user_ids, cltv_values, reasons, churn_probabilities)
+                for uid, cltv, tenure, charges_per_month, prob in zip(
+                    df['customerID'], df['CLTV'], df['Tenure Months'], df['ChargesPerMonth'], churn_probabilities
+                )
             ],
             key=lambda x: x['churn_probability'],
             reverse=True
