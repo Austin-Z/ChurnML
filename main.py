@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import pandas as pd
+import requests
+import os
 
 app = FastAPI()
 
@@ -15,9 +17,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load the pre-trained model
+# Load the pre-trained model from a URL
 try:
-    response = requests.get('https://ML.jampajoy.com/calibrated_rf_model.joblib')
+    model_url = 'https://ML.jampajoy.com/calibrated_rf_model.joblib'
+    response = requests.get(model_url)
     with open('calibrated_rf_model.joblib', 'wb') as f:
         f.write(response.content)
     model = joblib.load('calibrated_rf_model.joblib')
@@ -69,4 +72,6 @@ async def predict_churn(file: UploadFile = File(...)):
     except Exception as e:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
-
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
