@@ -69,6 +69,10 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
         # Read the uploaded CSV file into a pandas DataFrame
         df = pd.read_csv(file.file)
         
+        if 'CustomerID' not in df.columns:
+            raise HTTPException(status_code=400, detail="Input data is missing required feature column: CustomerID")
+        # Extract features and preprocess for model input
+        CustomerID = df['CustomerID']
         # Feature Engineering: Create ChargesPerMonth
         df['ChargesPerMonth'] = df['Total Charges'] / df['Tenure Months']
         
