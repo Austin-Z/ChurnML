@@ -1,11 +1,11 @@
 fastapi==0.100.0
 hypercorn==0.14.4
 joblib==1.1.0
-pandas
 requests
 python-multipart
-matplotlib
-numpy
-seaborn
-scikit-learn
-imbalanced-learn
+pandas==1.5.3
+matplotlib==3.6.2
+numpy==1.23.5  # Adjust this version if you have compatibility issues
+seaborn==0.12.0
+scikit-learn==1.0.2
+imbalanced-learn==0.9.1
