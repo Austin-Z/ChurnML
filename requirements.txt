@@ -3,4 +3,4 @@ hypercorn==0.14.4
 joblib==1.1.0
 pandas
 requests
-
+python-multipart
