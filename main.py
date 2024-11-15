@@ -1,77 +1,77 @@
-# main.py
-from fastapi import FastAPI, Depends
-from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, Float, String
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from model import predict  # Import the predict function from model.py
+import joblib
+import pandas as pd
+import requests
 import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = FastAPI()
 
-# Add CORS middleware to allow requests from any origin (for development purposes)
+# Enable CORS for all origins 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins; adjust if needed
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Database Configuration
-DATABASE_URL = f"mysql+pymysql://{os.getenv('AZURE_MYSQL_USER')}:{os.getenv('AZURE_MYSQL_PASSWORD')}@{os.getenv('AZURE_MYSQL_HOST')}:3306/{os.getenv('AZURE_MYSQL_NAME')}"
+# Load the pre-trained model from a URL
+try:
+    model_url = 'https://ML.jampajoy.com/calibrated_rf_model.joblib'
+    response = requests.get(model_url)
+    with open('calibrated_rf_model.joblib', 'wb') as f:
+        f.write(response.content)
+    model = joblib.load('calibrated_rf_model.joblib')
+except Exception as e:
+    print("Error loading model:", e)
+    model = None
 
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+@app.post("/predict-churn")
+async def predict_churn(file: UploadFile = File(...)):
+    if model is None:
+        return JSONResponse(status_code=500, content={"error": "Model not loaded"})
 
-# Define a model for storing predictions (optional)
-class Prediction(Base):
-    __tablename__ = "predictions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    feature1 = Column(Float, nullable=False)
-    feature2 = Column(Float, nullable=False)
-    feature3 = Column(Float, nullable=False)
-    result = Column(String, nullable=False)
-
-# Create the table (only needed once)
-Base.metadata.create_all(bind=engine)
-
-# Dependency to get a DB session
-def get_db():
-    db = SessionLocal()
     try:
-        yield db
-    finally:
-        db.close()
+        # Read the uploaded CSV file into a pandas DataFrame
+        df = pd.read_csv(file.file)
 
-# Define the input schema
-class ModelInput(BaseModel):
-    feature1: float
-    feature2: float
-    feature3: float
+        # Rename columns if necessary
+        if 'CustomerID' in df.columns:
+            df = df.rename(columns={'CustomerID': 'user_id'})
+        if 'CLTV_value' in df.columns:
+            df = df.rename(columns={'CLTV_value': 'CLTV'})
 
-@app.post("/predict")
-def get_prediction(input_data: ModelInput, db: Session = Depends(get_db)):
-    # Convert input data to list format that `predict` function expects
-    features = [input_data.feature1, input_data.feature2, input_data.feature3]
-    prediction_result = predict(features)  # Call the predict function with input features
+        required_columns = ['user_id', 'CLTV', 'Reason']
+        if not all(col in df.columns for col in required_columns):
+            return JSONResponse(status_code=400, content={"error": f"CSV file must contain columns: {', '.join(required_columns)}"})
 
-    # Optionally, save the prediction to the database
-    db_prediction = Prediction(
-        feature1=input_data.feature1,
-        feature2=input_data.feature2,
-        feature3=input_data.feature3,
-        result=str(prediction_result)
-    )
-    db.add(db_prediction)
-    db.commit()
-    db.refresh(db_prediction)
+        # Extract necessary columns
+        user_ids = df['user_id']
+        cltv_values = df['CLTV']
+        reasons = df['Reason']
 
-    return {"prediction": prediction_result, "prediction_id": db_prediction.id}
+        # Preprocess for model input and make predictions
+        model_features = model.feature_names_in_
+        df_features = df.reindex(columns=model_features, fill_value=0)
+        churn_probabilities = model.predict_proba(df_features)[:, 1]
+
+        # Prepare sorted results
+        results = sorted(
+            [
+                {"user_id": uid, "cltv": cltv, "reason": reason, "churn_probability": prob}
+                for uid, cltv, reason, prob in zip(user_ids, cltv_values, reasons, churn_probabilities)
+            ],
+            key=lambda x: x['churn_probability'],
+            reverse=True  # Sort in descending order
+        )
+
+        return {"predictions": results}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
