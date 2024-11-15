@@ -17,7 +17,10 @@ app.add_middleware(
 
 # Load the pre-trained model
 try:
-    model = joblib.load(r'https://ML.jampajoy.com/calibrated_rf_model.joblib')
+    response = requests.get('https://ML.jampajoy.com/calibrated_rf_model.joblib')
+    with open('calibrated_rf_model.joblib', 'wb') as f:
+        f.write(response.content)
+    model = joblib.load('calibrated_rf_model.joblib')
 except Exception as e:
     print("Error loading model:", e)
     model = None
