@@ -17,7 +17,7 @@ app.add_middleware(
 
 # Load the pre-trained model
 try:
-    model = joblib.load(r'c:\Users\austi\Github\ChurnML\calibrated_rf_model.joblib')
+    model = joblib.load(r'https://ML.jampajoy.com/calibrated_rf_model.joblib')
 except Exception as e:
     print("Error loading model:", e)
     model = None
