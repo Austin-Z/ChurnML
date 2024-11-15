@@ -1,33 +1,69 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from model import predict  # Import the predict function from model.py
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
+import joblib
+import pandas as pd
 
 app = FastAPI()
 
-# Add CORS middleware to allow requests from any origin (for development purposes)
+# Enable CORS for all origins 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins; adjust if needed
+    allow_origins=["*"], 
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all HTTP methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# Define the input schema
-class ModelInput(BaseModel):
-    feature1: float
-    feature2: float
-    feature3: float
+# Load the pre-trained model
+try:
+    model = joblib.load(r'c:\Users\austi\Github\ChurnML\calibrated_rf_model.joblib')
+except Exception as e:
+    print("Error loading model:", e)
+    model = None
 
-@app.post("/predict")
-def get_prediction(input_data: ModelInput):
-    # Convert input data to list format that `predict` function expects
-    features = [input_data.feature1, input_data.feature2, input_data.feature3]
-    prediction_result = predict(features)  # Call the predict function with input features
+@app.post("/predict-churn")
+async def predict_churn(file: UploadFile = File(...)):
+    if model is None:
+        return JSONResponse(status_code=500, content={"error": "Model not loaded"})
 
-    return {"prediction": prediction_result}
+    try:
+        # Read the uploaded CSV file into a pandas DataFrame
+        df = pd.read_csv(file.file)
+
+        # Rename columns if necessary
+        if 'CustomerID' in df.columns:
+            df = df.rename(columns={'CustomerID': 'user_id'})
+        if 'CLTV_value' in df.columns:
+            df = df.rename(columns={'CLTV_value': 'CLTV'})
+
+        required_columns = ['user_id', 'CLTV', 'Reason']
+        if not all(col in df.columns for col in required_columns):
+            return JSONResponse(status_code=400, content={"error": f"CSV file must contain columns: {', '.join(required_columns)}"})
+
+        # Extract necessary columns
+        user_ids = df['user_id']
+        cltv_values = df['CLTV']
+        reasons = df['Reason']
+
+        # Preprocess for model input and make predictions
+        model_features = model.feature_names_in_
+        df_features = df.reindex(columns=model_features, fill_value=0)
+        churn_probabilities = model.predict_proba(df_features)[:, 1]
+
+        # Prepare sorted results
+        results = sorted(
+            [
+                {"user_id": uid, "cltv": cltv, "reason": reason, "churn_probability": prob}
+                for uid, cltv, reason, prob in zip(user_ids, cltv_values, reasons, churn_probabilities)
+            ],
+            key=lambda x: x['churn_probability'],
+            reverse=True  # Sort in descending order
+        )
+
+        return {"predictions": results}
+
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
