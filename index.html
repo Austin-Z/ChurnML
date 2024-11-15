@@ -129,7 +129,7 @@
     <script>
         let predictions = [];
         let currentIndex = 0;
-        const batchSize = 10;
+        const batchSize = 50;
 
         document.getElementById('upload-form').addEventListener('submit', async function(event) {
             event.preventDefault();
@@ -138,7 +138,7 @@
             formData.append('file', fileInput.files[0]);
 
             try {
-                const response = await fetch('http://localhost:5000/predict-churn', {
+                const response = await fetch('http://127.0.0.1:8000/predict-churn', {
                     method: 'POST',
                     body: formData
                 });
