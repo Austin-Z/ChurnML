@@ -4,3 +4,8 @@ joblib==1.1.0
 pandas
 requests
 python-multipart
+matplotlib
+numpy
+seaborn
+scikit-learn
+imbalanced-learn
