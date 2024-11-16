@@ -29,6 +29,7 @@ app.add_middleware(
 # Global variable for model
 model = None
 
+
 @app.on_event("startup")
 async def load_model():
     """Load model on startup instead of module level"""
@@ -68,21 +69,24 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
     try:
         # Read the uploaded CSV file into a pandas DataFrame
         df = pd.read_csv(file.file)
+
+        # Step 1: Keep a copy of the original CustomerID
+        df['Original_CustomerID'] = df['CustomerID']
+        df['CLTV'] = df['CLTV']
+        # Step 2: Convert CustomerID to a unique integer identifier for model input
+        df['CustomerID'] = pd.factorize(df['CustomerID'])[0]
         
-        if 'CustomerID' not in df.columns:
-            raise HTTPException(status_code=400, detail="Input data is missing required feature column: CustomerID")
-        # Extract features and preprocess for model input
-        CustomerID = df['CustomerID']
-        # Feature Engineering: Create ChargesPerMonth
         df['ChargesPerMonth'] = df['Total Charges'] / df['Tenure Months']
         
         # Drop unnecessary columns
         df = df.drop(['Total Charges', 'Monthly Charges'], axis=1)
+        # Identify columns that need one-hot encoding (exclude Original_CustomerID)
+        categorical_columns = df.select_dtypes(include=['object']).columns
+        categorical_columns = categorical_columns.drop(['Original_CustomerID'])  # Exclude specific columns
         
+        df = pd.get_dummies(df, columns=categorical_columns, drop_first=True)
         # One-Hot Encoding for all categorical columns, dropping the first category
-        df = pd.get_dummies(df, drop_first=True)
-        
-        # Extract features for prediction
+
         model_features = model.feature_names_in_
         missing_features = [col for col in model_features if col not in df.columns]
         if missing_features:
@@ -90,28 +94,26 @@ async def predict_churn(file: UploadFile = File(...)) -> Dict:
                 status_code=400,
                 detail=f"Input data is missing required feature columns: {', '.join(missing_features)}"
             )
-        
-        # Align DataFrame with the model’s expected features
+        # Separate features for model prediction
         df_features = df.reindex(columns=model_features, fill_value=0)
         
         # Predict churn probabilities
         churn_probabilities = model.predict_proba(df_features)[:, 1]
         
-        # Prepare sorted results
+        # Prepare response
         results = sorted(
             [
                 {
-                    "user_id": str(uid),
-                    "cltv": float(cltv),
-                    "tenure": int(tenure),
+                    "Original_CustomerID": str(original_id),  # Original CustomerID for display
+                    "CLTV": float(cltv),
                     "ChargesPerMonth": float(charges_per_month),
-                    "churn_probability": float(prob)
+                    "Churn Probabilities": float(prob)
                 }
-                for uid, cltv, tenure, charges_per_month, prob in zip(
-                    df['customerID'], df['CLTV'], df['Tenure Months'], df['ChargesPerMonth'], churn_probabilities
+                for original_id, cltv, charges_per_month, prob in zip(
+                    df['Original_CustomerID'], df['CLTV'], df['ChargesPerMonth'], churn_probabilities
                 )
             ],
-            key=lambda x: x['churn_probability'],
+            key=lambda x: x['Churn Probabilities'],
             reverse=True
         )
         
