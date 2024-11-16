@@ -191,7 +191,7 @@
                     <td>${prediction.Original_CustomerID}</td>
                     <td>${prediction.CLTV}</td>
                     <td>${prediction.ChargesPerMonth}</td>
-                    <td>${(prediction.churn_probabilities * 100).toFixed(2)}%</td>
+                    <td>${((prediction['Churn Probabilities'] * 100)).toFixed(2)}%</td>
                 `;
                 resultsTable.appendChild(row);
             });
