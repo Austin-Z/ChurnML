@@ -35,7 +35,7 @@ async def load_model():
     """Load model on startup instead of module level"""
     global model
     try:
-        model_url = 'https://ML.jampajoy.com/xgb_model.joblib'
+        model_url = 'https://github.com/Austin-Z/ChurnML/blob/main/xgb_model.joblib'
         response = requests.get(model_url, timeout=30)  # Add timeout
         response.raise_for_status()  # Raise error for bad status codes
         
